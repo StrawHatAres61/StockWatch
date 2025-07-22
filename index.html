@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockWatch - Financial Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .ticker-scroll {
+            animation: scroll 30s linear infinite;
+        }
+        @keyframes scroll {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+        .price-up { color: #10b981; }
+        .price-down { color: #ef4444; }
+        .loading-shimmer {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .asset-card {
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .asset-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .tab-active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+        .news-item {
+            transition: all 0.2s ease;
+        }
+        .news-item:hover {
+            background-color: rgba(59, 130, 246, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-chart-line text-3xl"></i>
+                    <h1 class="text-2xl font-bold">StockWatch</h1>
+                </div>
+                <div class="hidden md:flex items-center space-x-4">
+                    <span id="lastUpdate" class="text-sm opacity-80">Last updated: --:--</span>
+                    <button class="glass-effect px-4 py-2 rounded-lg text-sm hover:bg-white/10 transition-all">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Ticker -->
+        <div class="bg-black/20 py-2 overflow-hidden">
+            <div id="tickerContainer" class="ticker-scroll whitespace-nowrap">
+                <span class="inline-block mx-8">Loading market data...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- Asset Categories -->
+        <div class="flex space-x-1 mb-6 bg-white rounded-lg p-1 shadow-sm">
+            <button class="tab-btn tab-active flex-1 py-2 px-4 rounded-md transition-all" data-category="crypto">
+                <i class="fas fa-coins mr-2"></i>Crypto
+            </button>
+            <button class="tab-btn flex-1 py-2 px-4 rounded-md transition-all" data-category="stocks">
+                <i class="fas fa-building mr-2"></i>Stocks
+            </button>
+            <button class="tab-btn flex-1 py-2 px-4 rounded-md transition-all" data-category="forex">
+                <i class="fas fa-exchange-alt mr-2"></i>Forex
+            </button>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Asset List -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-list mr-2 text-blue-500"></i>
+                        <span id="categoryTitle">Cryptocurrencies</span>
+                    </h2>
+                    <div id="assetList" class="space-y-3">
+                        <!-- Assets will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- News Feed -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-newspaper mr-2 text-green-500"></i>
+                        Market News
+                    </h2>
+                    <div id="newsFeed" class="space-y-4 max-h-96 overflow-y-auto">
+                        <!-- News will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart Modal -->
+        <div id="chartModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-screen overflow-y-auto">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 id="chartTitle" class="text-xl font-bold">Asset Chart</h3>
+                            <button onclick="closeChart()" class="text-gray-500 hover:text-gray-700">
+                                <i class="fas fa-times text-xl"></i>
+                            </button>
+                        </div>
+                        <div class="flex space-x-2 mb-4">
+                            <button class="time-btn px-3 py-1 rounded bg-blue-500 text-white" data-timeframe="1D">1D</button>
+                            <button class="time-btn px-3 py-1 rounded bg-gray-200" data-timeframe="1W">1W</button>
+                            <button class="time-btn px-3 py-1 rounded bg-gray-200" data-timeframe="1M">1M</button>
+                            <button class="time-btn px-3 py-1 rounded bg-gray-200" data-timeframe="1Y">1Y</button>
+                        </div>
+                        <canvas id="chartCanvas" width="800" height="400"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Mock data for demonstration
+        const mockData = {
+            crypto: [
+                { symbol: 'BTC', name: 'Bitcoin', price: 45234.56, change: 2.34, changePercent: 5.2, volume: 28934567890 },
+                { symbol: 'ETH', name: 'Ethereum', price: 2456.78, change: -45.23, changePercent: -1.8, volume: 15678934567 },
+                { symbol: 'BNB', name: 'Binance Coin', price: 234.56, change: 5.67, changePercent: 2.5, volume: 1234567890 },
+                { symbol: 'ADA', name: 'Cardano', price: 0.456, change: 0.012, changePercent: 2.7, volume: 234567890 },
+                { symbol: 'SOL', name: 'Solana', price: 123.45, change: 8.9, changePercent: 7.8, volume: 3456789012 }
+            ],
+            stocks: [
+                { symbol: 'AAPL', name: 'Apple Inc.', price: 178.45, change: 3.21, changePercent: 1.8, volume: 45678901234 },
+                { symbol: 'GOOGL', name: 'Alphabet Inc.', price: 2567.89, change: -23.45, changePercent: -0.9, volume: 23456789012 },
+                { symbol: 'MSFT', name: 'Microsoft', price: 345.67, change: 5.67, changePercent: 1.7, volume: 34567890123 },
+                { symbol: 'AMZN', name: 'Amazon', price: 123.45, change: -2.34, changePercent: -1.9, volume: 12345678901 },
+                { symbol: 'TSLA', name: 'Tesla', price: 234.56, change: 12.34, changePercent: 5.6, volume: 67890123456 }
+            ],
+            forex: [
+                { symbol: 'EURUSD', name: 'EUR/USD', price: 1.0897, change: 0.0023, changePercent: 0.21, volume: 123456789012 },
+                { symbol: 'GBPUSD', name: 'GBP/USD', price: 1.2678, change: -0.0123, changePercent: -0.96, volume: 98765432109 },
+                { symbol: 'USDJPY', name: 'USD/JPY', price: 149.45, change: 0.34, changePercent: 0.23, volume: 87654321098 },
+                { symbol: 'USDCHF', name: 'USD/CHF', price: 0.8901, change: -0.0045, changePercent: -0.5, volume: 76543210987 },
+                { symbol: 'AUDUSD', name: 'AUD/USD', price: 0.6456, change: 0.0089, changePercent: 1.4, volume: 65432109876 }
+            ]
+        };
+
+        const mockNews = [
+            { title: "Bitcoin Surges Past $45,000 Amid ETF Approval Speculation", source: "CoinDesk", time: "2 hours ago", url: "#" },
+            { title: "Federal Reserve Signals Potential Rate Cut in 2024", source: "Reuters", time: "3 hours ago", url: "#" },
+            { title: "Apple Announces Record Q4 Earnings, Beats Estimates", source: "CNBC", time: "5 hours ago", url: "#" },
+            { title: "Ethereum Network Upgrade Scheduled for Next Month", source: "The Block", time: "6 hours ago", url: "#" },
+            { title: "Tesla Reports Strong Delivery Numbers for Q4", source: "Bloomberg", time: "8 hours ago", url: "#" }
+        ];
+
+        let currentCategory = 'crypto';
+        let chart = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAssets(currentCategory);
+            loadNews();
+            updateTicker();
+            updateLastUpdate();
+            setInterval(updateLastUpdate, 60000);
+            
+            // Tab switching
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+                    this.classList.add('tab-active');
+                    currentCategory = this.dataset.category;
+                    loadAssets(currentCategory);
+                });
+            });
+
+            // Time frame switching
+            document.querySelectorAll('.time-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.time-btn').forEach(b => {
+                        b.classList.remove('bg-blue-500', 'text-white');
+                        b.classList.add('bg-gray-200');
+                    });
+                    this.classList.add('bg-blue-500', 'text-white');
+                    updateChart(this.dataset.timeframe);
+                });
+            });
+        });
+
+        function loadAssets(category) {
+            const assets = mockData[category];
+            const container = document.getElementById('assetList');
+            const titleMap = {
+                crypto: 'Cryptocurrencies',
+                stocks: 'Stocks',
+                forex: 'Forex'
+            };
+            
+            document.getElementById('categoryTitle').textContent = titleMap[category];
+            container.innerHTML = '';
+            
+            assets.forEach(asset => {
+                const isUp = asset.change >= 0;
+                const card = document.createElement('div');
+                card.className = 'asset-card bg-gray-50 rounded-lg p-4 cursor-pointer hover:bg-gray-100';
+                card.onclick = () => showChart(asset);
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg">${asset.symbol}</h3>
+                            <p class="text-sm text-gray-600">${asset.name}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xl font-bold">$${asset.price.toLocaleString()}</p>
+                            <p class="${isUp ? 'price-up' : 'price-down'} text-sm">
+                                ${isUp ? '+' : ''}${asset.change.toFixed(2)} 
+                                (${isUp ? '+' : ''}${asset.changePercent.toFixed(2)}%)
+                            </p>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-sm text-gray-600">
+                        Volume: ${formatVolume(asset.volume)}
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+        }
+
+        function loadNews() {
+            const container = document.getElementById('newsFeed');
+            container.innerHTML = '';
+            
+            mockNews.forEach(news => {
+                const newsItem = document.createElement('div');
+                newsItem.className = 'news-item p-3 border-b border-gray-100';
+                newsItem.innerHTML = `
+                    <h4 class="font-semibold text-sm mb-1">${news.title}</h4>
+                    <p class="text-xs text-gray-500">${news.source} • ${news.time}</p>
+                `;
+                container.appendChild(newsItem);
+            });
+        }
+
+        function updateTicker() {
+            const container = document.getElementById('tickerContainer');
+            const allAssets = [...mockData.crypto, ...mockData.stocks, ...mockData.forex];
+            const tickerItems = allAssets.slice(0, 10).map(asset => 
+                `<span class="inline-block mx-8">${asset.symbol} $${asset.price.toFixed(2)} ${asset.change >= 0 ? '+' : ''}${asset.changePercent.toFixed(2)}%</span>`
+            ).join('');
+            container.innerHTML = tickerItems;
+        }
+
+        function updateLastUpdate() {
+            document.getElementById('lastUpdate').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+        }
+
+        function formatVolume(volume) {
+            if (volume >= 1e12) return (volume / 1e12).toFixed(1) + 'T';
+            if (volume >= 1e9) return (volume / 1e9).toFixed(1) + 'B';
+            if (volume >= 1e6) return (volume / 1e6).toFixed(1) + 'M';
+            return volume.toLocaleString();
+        }
+
+        function showChart(asset) {
+            document.getElementById('chartModal').classList.remove('hidden');
+            document.getElementById('chartTitle').textContent = `${asset.symbol} - ${asset.name}`;
+            updateChart('1D');
+        }
+
+        function closeChart() {
+            document.getElementById('chartModal').classList.add('hidden');
+            if (chart) {
+                chart.destroy();
+                chart = null;
+            }
+        }
+
+        function updateChart(timeframe) {
+            const ctx = document.getElementById('chartCanvas').getContext('2d');
+            
+            // Generate mock candlestick data based on timeframe
+            const data = generateCandlestickData(timeframe);
+            
+            if (chart) chart.destroy();
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Price',
+                        data: data.prices,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }, {
+                        label: 'Volume',
+                        data: data.volumes,
+                        type: 'bar',
+                        backgroundColor: 'rgba(16, 185, 129, 0.3)',
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateCandlestickData(timeframe) {
+            const labels = [];
+            const prices = [];
+            const volumes = [];
+            const now = new Date();
+            
+            let days;
+            switch(timeframe) {
+                case '1D': days = 1; break;
+                case '1W': days = 7; break;
+                case '1M': days = 30; break;
+                case '1Y': days = 365; break;
+                default: days = 1;
+            }
+            
+            for (let i = days; i >= 0; i--) {
+                const date = new Date(now);
+                date.setDate(date.getDate() - i);
+                labels.push(date.toLocaleDateString());
+                prices.push(100 + Math.random() * 50);
+                volumes.push(Math.random() * 1000);
+            }
+            
+            return { labels, prices, volumes };
+        }
+    </script>
+</body>
+</html>
